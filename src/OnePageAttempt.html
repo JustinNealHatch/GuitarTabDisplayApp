@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guitar Tab Reader</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      font-family: monospace;
+      margin-bottom: 10px;
+    }
+    .controls button {
+      margin-right: 5px;
+      padding: 6px 12px;
+      font-size: 14px;
+    }
+    .fretboard {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .string-row {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 2px;
+    }
+    .fret {
+      width: 20px;
+      height: 20px;
+      background: #eee;
+      border: 1px solid #ccc;
+      font-size: 8px;
+      text-align: center;
+      line-height: 20px;
+      cursor: pointer;
+    }
+    .fret.active {
+      background: #f39c12;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <h1>Guitar Tab Reader</h1>
+  <textarea id="tabInput">e|-------------|
+B|-------------|
+G|-------------|
+D|-------------|
+A|-------------|
+E|-------------|</textarea>
+  <div class="controls">
+    <button id="playBtn">Play</button>
+    <button id="stopBtn">Stop</button>
+  </div>
+  <div id="fretboard" class="fretboard"></div>
+
+  <script>
+    const tabInput = document.getElementById('tabInput');
+    const playBtn = document.getElementById('playBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const fretboardEl = document.getElementById('fretboard');
+    let intervalId;
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    const chromatic = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const openNotes = ['E','B','G','D','A','E'];
+
+    // Map note name to frequency (4th octave reference)
+    function noteToFreq(note) {
+      const octave = parseInt(note.slice(-1)) || 4;
+      let key = note.slice(0, -1);
+      const semitoneIndex = chromatic.indexOf(key);
+      // A4 = 440Hz is index 9 + 12*4 = 57
+      const noteIndex = semitoneIndex + (octave * 12);
+      const a4Index = chromatic.indexOf('A') + 4 * 12; // 57
+      return 440 * Math.pow(2, (noteIndex - a4Index) / 12);
+    }
+
+    // Generate plucked string (Karplus-Strong) for given frequency
+    function playNoteKS(frequency, duration = 1) {
+      const sampleRate = audioCtx.sampleRate;
+      const bufferSize = sampleRate * duration;
+      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
+      const output = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+      }
+      const pluck = audioCtx.createBufferSource();
+      pluck.buffer = noiseBuffer;
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = frequency * 2;
+      pluck.connect(filter);
+      filter.connect(audioCtx.destination);
+      pluck.start();
+    }
+
+    function createFretboard() {
+      fretboardEl.innerHTML = '';
+      for (let s = 0; s < 6; s++) {
+        const row = document.createElement('div');
+        row.className = 'string-row';
+        const openIndex = chromatic.indexOf(openNotes[s]);
+        for (let f = 0; f < 16; f++) {
+          const noteIndex = (openIndex + f) % chromatic.length;
+          const octave = Math.floor((openIndex + f) / chromatic.length) + 4;
+          const noteName = chromatic[noteIndex] + octave;
+          const cell = document.createElement('div');
+          cell.className = 'fret';
+          cell.dataset.note = noteName;
+          cell.textContent = noteName;
+          row.appendChild(cell);
+        }
+        fretboardEl.appendChild(row);
+      }
+    }
+
+    function parseTab(text) {
+      const lines = text.trim().split('\n');
+      const sequences = lines.map(line => line.split('|')[1] || '');
+      const notes = [];
+      const length = sequences[0]?.length || 0;
+      for (let pos = 0; pos < length; pos++) {
+        for (let s = 0; s < sequences.length; s++) {
+          const char = sequences[s][pos];
+          if (/[0-9]/.test(char)) {
+            let fret = char;
+            const next = sequences[s][pos + 1];
+            if (/[0-9]/.test(next)) {
+              fret += next;
+              pos++;
+            }
+            notes.push({ string: s, fret: parseInt(fret, 10) });
+          }
+        }
+      }
+      return notes;
+    }
+
+    function highlightAndPlay(position) {
+      document.querySelectorAll('.fret').forEach(el => el.classList.remove('active'));
+      const row = fretboardEl.children[position.string];
+      const cell = row.children[position.fret];
+      if (cell) {
+        cell.classList.add('active');
+        const freq = noteToFreq(cell.dataset.note);
+        playNoteKS(freq, 0.5);
+      }
+    }
+
+    playBtn.onclick = () => {
+      const notes = parseTab(tabInput.value);
+      let idx = 0;
+      clearInterval(intervalId);
+      intervalId = setInterval(() => {
+        if (idx >= notes.length) {
+          clearInterval(intervalId);
+          return;
+        }
+        highlightAndPlay(notes[idx]);
+        idx++;
+      }, 500);
+    };
+
+    stopBtn.onclick = () => clearInterval(intervalId);
+
+    createFretboard();
+  </script>
+</body>
+</html>
