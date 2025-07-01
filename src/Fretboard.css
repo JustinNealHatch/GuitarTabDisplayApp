@@ -1,0 +1,19 @@
+.fretboard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.string-row {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 2px;
+}
+.fret {
+  width: 20px;
+  height: 10px;
+  background: #eee;
+  border: 1px solid #ccc;
+}
+.fret.active {
+  background: #f39c12;
+}
