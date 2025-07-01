@@ -4,16 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guitar Tab Reader</title>
+  <!-- SoundFont Player CDN -->
+  <script src="https://unpkg.com/soundfont-player@0.15.1/dist/soundfont-player.js"></script>
   <style>
     body {
       font-family: sans-serif;
       padding: 20px;
+      background: #f5f5f5;
     }
     textarea {
       width: 100%;
       height: 120px;
       font-family: monospace;
       margin-bottom: 10px;
+      box-sizing: border-box;
     }
     .controls button {
       margin-right: 5px;
@@ -23,26 +27,50 @@
     .fretboard {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      width: 100%;
+      max-width: 800px;
+      background: #deb887;
+      padding: 10px;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+      margin-top: 20px;
     }
     .string-row {
-      display: grid;
-      grid-template-columns: repeat(16, 1fr);
-      gap: 2px;
+      display: flex;
+      position: relative;
+      height: 24px;
+      border-bottom: 2px solid #999;
+    }
+    .string-row:last-child {
+      border-bottom: none;
     }
     .fret {
-      width: 20px;
-      height: 20px;
-      background: #eee;
-      border: 1px solid #ccc;
-      font-size: 8px;
+      flex: 1;
+      border-right: 1px solid #999;
+      position: relative;
       text-align: center;
       line-height: 20px;
-      cursor: pointer;
+      font-size: 10px;
+      color: #333;
+      background: rgba(255,255,255,0.2);
+    }
+    .fret:last-child {
+      border-right: none;
     }
     .fret.active {
       background: #f39c12;
       color: #fff;
+    }
+    /* fret markers at 3, 5, 7, 9, 12, 15 */
+    .fretboard .string-row:nth-child(1) .fret:nth-child(4),
+    .fretboard .string-row:nth-child(1) .fret:nth-child(6),
+    .fretboard .string-row:nth-child(1) .fret:nth-child(8),
+    .fretboard .string-row:nth-child(1) .fret:nth-child(10),
+    .fretboard .string-row:nth-child(1) .fret:nth-child(13),
+    .fretboard .string-row:nth-child(1) .fret:nth-child(16) {
+      box-shadow: inset 0 -2px 0 0 #555;
+    }
+    h1 {
+      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -59,7 +87,6 @@ E|-------------|</textarea>
     <button id="stopBtn">Stop</button>
   </div>
   <div id="fretboard" class="fretboard"></div>
-
   <script>
     const tabInput = document.getElementById('tabInput');
     const playBtn = document.getElementById('playBtn');
@@ -67,39 +94,15 @@ E|-------------|</textarea>
     const fretboardEl = document.getElementById('fretboard');
     let intervalId;
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let guitarPlayer;
+
+    // Load nylon guitar SoundFont
+    Soundfont.instrument(audioCtx, 'acoustic_guitar_nylon', { gain: 1 }).then(player => {
+      guitarPlayer = player;
+    });
 
     const chromatic = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
     const openNotes = ['E','B','G','D','A','E'];
-
-    // Map note name to frequency (4th octave reference)
-    function noteToFreq(note) {
-      const octave = parseInt(note.slice(-1)) || 4;
-      let key = note.slice(0, -1);
-      const semitoneIndex = chromatic.indexOf(key);
-      // A4 = 440Hz is index 9 + 12*4 = 57
-      const noteIndex = semitoneIndex + (octave * 12);
-      const a4Index = chromatic.indexOf('A') + 4 * 12; // 57
-      return 440 * Math.pow(2, (noteIndex - a4Index) / 12);
-    }
-
-    // Generate plucked string (Karplus-Strong) for given frequency
-    function playNoteKS(frequency, duration = 1) {
-      const sampleRate = audioCtx.sampleRate;
-      const bufferSize = sampleRate * duration;
-      const noiseBuffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
-      const output = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        output[i] = Math.random() * 2 - 1;
-      }
-      const pluck = audioCtx.createBufferSource();
-      pluck.buffer = noiseBuffer;
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = frequency * 2;
-      pluck.connect(filter);
-      filter.connect(audioCtx.destination);
-      pluck.start();
-    }
 
     function createFretboard() {
       fretboardEl.innerHTML = '';
@@ -114,7 +117,6 @@ E|-------------|</textarea>
           const cell = document.createElement('div');
           cell.className = 'fret';
           cell.dataset.note = noteName;
-          cell.textContent = noteName;
           row.appendChild(cell);
         }
         fretboardEl.appendChild(row);
@@ -147,10 +149,9 @@ E|-------------|</textarea>
       document.querySelectorAll('.fret').forEach(el => el.classList.remove('active'));
       const row = fretboardEl.children[position.string];
       const cell = row.children[position.fret];
-      if (cell) {
+      if (cell && guitarPlayer) {
         cell.classList.add('active');
-        const freq = noteToFreq(cell.dataset.note);
-        playNoteKS(freq, 0.5);
+        guitarPlayer.play(cell.dataset.note);
       }
     }
 
