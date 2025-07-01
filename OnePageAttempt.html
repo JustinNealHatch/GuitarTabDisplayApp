@@ -6,6 +6,8 @@
   <title>Guitar Tab Reader</title>
   <!-- SoundFont Player CDN -->
   <script src="https://unpkg.com/soundfont-player@0.15.1/dist/soundfont-player.js"></script>
+  <!-- VexFlow for fretboard rendering -->
+  <script src="https://unpkg.com/vexflow/releases/vexflow-min.js"></script>
   <style>
     body {
       font-family: sans-serif;
@@ -24,53 +26,11 @@
       padding: 6px 12px;
       font-size: 14px;
     }
-    .fretboard {
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      max-width: 800px;
+    #fretboard-container {
+      margin-top: 20px;
       background: #deb887;
       padding: 10px;
       box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
-      margin-top: 20px;
-    }
-    .string-row {
-      display: flex;
-      position: relative;
-      height: 24px;
-      border-bottom: 2px solid #999;
-    }
-    .string-row:last-child {
-      border-bottom: none;
-    }
-    .fret {
-      flex: 1;
-      border-right: 1px solid #999;
-      position: relative;
-      text-align: center;
-      line-height: 20px;
-      font-size: 10px;
-      color: #333;
-      background: rgba(255,255,255,0.2);
-    }
-    .fret:last-child {
-      border-right: none;
-    }
-    .fret.active {
-      background: #f39c12;
-      color: #fff;
-    }
-    /* fret markers at 3, 5, 7, 9, 12, 15 */
-    .fretboard .string-row:nth-child(1) .fret:nth-child(4),
-    .fretboard .string-row:nth-child(1) .fret:nth-child(6),
-    .fretboard .string-row:nth-child(1) .fret:nth-child(8),
-    .fretboard .string-row:nth-child(1) .fret:nth-child(10),
-    .fretboard .string-row:nth-child(1) .fret:nth-child(13),
-    .fretboard .string-row:nth-child(1) .fret:nth-child(16) {
-      box-shadow: inset 0 -2px 0 0 #555;
-    }
-    h1 {
-      margin-bottom: 10px;
     }
   </style>
 </head>
@@ -86,92 +46,74 @@ E|-------------|</textarea>
     <button id="playBtn">Play</button>
     <button id="stopBtn">Stop</button>
   </div>
-  <div id="fretboard" class="fretboard"></div>
+  <div id="fretboard-container"></div>
   <script>
+    const { Flow } = Vex;
     const tabInput = document.getElementById('tabInput');
     const playBtn = document.getElementById('playBtn');
     const stopBtn = document.getElementById('stopBtn');
-    const fretboardEl = document.getElementById('fretboard');
     let intervalId;
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     let guitarPlayer;
 
-    // Load nylon guitar SoundFont
+    // Load SoundFont
     Soundfont.instrument(audioCtx, 'acoustic_guitar_nylon', { gain: 1 }).then(player => {
       guitarPlayer = player;
     });
 
-    const chromatic = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-    const openNotes = ['E','B','G','D','A','E'];
-
-    function createFretboard() {
-      fretboardEl.innerHTML = '';
-      for (let s = 0; s < 6; s++) {
-        const row = document.createElement('div');
-        row.className = 'string-row';
-        const openIndex = chromatic.indexOf(openNotes[s]);
-        for (let f = 0; f < 16; f++) {
-          const noteIndex = (openIndex + f) % chromatic.length;
-          const octave = Math.floor((openIndex + f) / chromatic.length) + 4;
-          const noteName = chromatic[noteIndex] + octave;
-          const cell = document.createElement('div');
-          cell.className = 'fret';
-          cell.dataset.note = noteName;
-          row.appendChild(cell);
-        }
-        fretboardEl.appendChild(row);
-      }
-    }
+    // Initialize VexFlow fretboard
+    const VF = Vex.Flow;
+    const renderer = new VF.Renderer(
+      document.getElementById('fretboard-container'),
+      VF.Renderer.Backends.SVG
+    );
+    renderer.resize(800, 200);
+    const ctx = renderer.getContext();
+    const board = new VF.Fretboard(ctx, {
+      width: 760,
+      height: 180,
+      strings: ['E/4', 'B/3', 'G/3', 'D/3', 'A/2', 'E/2'],
+      frets: 15
+    });
+    board.draw();
 
     function parseTab(text) {
       const lines = text.trim().split('\n');
-      const sequences = lines.map(line => line.split('|')[1] || '');
+      const seq = lines.map(l => l.split('|')[1] || '');
       const notes = [];
-      const length = sequences[0]?.length || 0;
-      for (let pos = 0; pos < length; pos++) {
-        for (let s = 0; s < sequences.length; s++) {
-          const char = sequences[s][pos];
-          if (/[0-9]/.test(char)) {
-            let fret = char;
-            const next = sequences[s][pos + 1];
-            if (/[0-9]/.test(next)) {
-              fret += next;
-              pos++;
-            }
-            notes.push({ string: s, fret: parseInt(fret, 10) });
+      const len = seq[0]?.length || 0;
+      for (let pos = 0; pos < len; pos++) {
+        seq.forEach((str, s) => {
+          const ch = str[pos];
+          if (/[0-9]/.test(ch)) {
+            let fret = ch;
+            const nxt = str[pos+1];
+            if (/[0-9]/.test(nxt)) { fret += nxt; pos++; }
+            notes.push({ string: 6 - s, fret: parseInt(fret,10) });
           }
-        }
+        });
       }
       return notes;
     }
 
-    function highlightAndPlay(position) {
-      document.querySelectorAll('.fret').forEach(el => el.classList.remove('active'));
-      const row = fretboardEl.children[position.string];
-      const cell = row.children[position.fret];
-      if (cell && guitarPlayer) {
-        cell.classList.add('active');
-        guitarPlayer.play(cell.dataset.note);
-      }
+    function highlightAndPlay(pos) {
+      board.clearFretStyles();
+      board.setFretStyle(pos.string - 1, pos.fret, { fillStyle: '#f39c12' });
+      board.draw();
+      if (guitarPlayer) guitarPlayer.play(board.getNoteString(pos.string - 1, pos.fret));
     }
 
     playBtn.onclick = () => {
       const notes = parseTab(tabInput.value);
-      let idx = 0;
+      let i = 0;
       clearInterval(intervalId);
       intervalId = setInterval(() => {
-        if (idx >= notes.length) {
-          clearInterval(intervalId);
-          return;
-        }
-        highlightAndPlay(notes[idx]);
-        idx++;
+        if (i >= notes.length) return clearInterval(intervalId);
+        highlightAndPlay(notes[i]);
+        i++;
       }, 500);
     };
-
     stopBtn.onclick = () => clearInterval(intervalId);
-
-    createFretboard();
   </script>
 </body>
 </html>
