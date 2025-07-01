@@ -11,7 +11,13 @@
     body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
     textarea { width: 100%; height: 120px; font-family: monospace; margin-bottom: 10px; box-sizing: border-box; }
     .controls button { margin-right: 5px; padding: 6px 12px; font-size: 14px; }
-    #fretboard { margin-top: 20px; width: 800px; height: 200px; border: 2px solid #999; background: #fff; }
+    #fretboard {
+      margin-top: 20px;
+      width: 100%;
+      height: 200px;
+      background: transparent;
+      border: none;
+    }
   </style>
 </head>
 <body>
@@ -29,13 +35,12 @@ E|-------------|</textarea>
   <div id="fretboard"></div>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
-      // Initialize GuitarJS
       const guitar = new GuitarJS.Guitar({
         element: '#fretboard',
         strings: 6,
         frets: 15,
-        width: 800,
-        height: 200,
+        width: document.getElementById('fretboard').clientWidth,
+        height: document.getElementById('fretboard').clientHeight,
         tuning: ['E4','B3','G3','D3','A2','E2'],
         soundFontUrl: 'https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/'
       });
