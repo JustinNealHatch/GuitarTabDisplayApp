@@ -4,34 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Guitar Tab Reader</title>
-  <!-- SoundFont Player CDN -->
-  <script src="https://unpkg.com/soundfont-player@0.15.1/dist/soundfont-player.js"></script>
-  <!-- VexFlow for fretboard rendering -->
-  <script src="https://unpkg.com/vexflow/releases/vexflow-min.js"></script>
+  <!-- GuitarJS and Tone.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/guitarjs@1.0.1/dist/guitar.js"></script>
   <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-      background: #f5f5f5;
-    }
-    textarea {
-      width: 100%;
-      height: 120px;
-      font-family: monospace;
-      margin-bottom: 10px;
-      box-sizing: border-box;
-    }
-    .controls button {
-      margin-right: 5px;
-      padding: 6px 12px;
-      font-size: 14px;
-    }
-    #fretboard-container {
-      margin-top: 20px;
-      background: #deb887;
-      padding: 10px;
-      box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
-    }
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+    textarea { width: 100%; height: 120px; font-family: monospace; margin-bottom: 10px; box-sizing: border-box; }
+    .controls button { margin-right: 5px; padding: 6px 12px; font-size: 14px; }
+    #fretboard { margin-top: 20px; }
   </style>
 </head>
 <body>
@@ -46,36 +26,18 @@ E|-------------|</textarea>
     <button id="playBtn">Play</button>
     <button id="stopBtn">Stop</button>
   </div>
-  <div id="fretboard-container"></div>
+  <div id="fretboard"></div>
   <script>
-    const { Flow } = Vex;
-    const tabInput = document.getElementById('tabInput');
-    const playBtn = document.getElementById('playBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    let intervalId;
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let guitarPlayer;
-
-    // Load SoundFont
-    Soundfont.instrument(audioCtx, 'acoustic_guitar_nylon', { gain: 1 }).then(player => {
-      guitarPlayer = player;
+    // Initialize GuitarJS
+    const guitar = new GuitarJS.Guitar({
+      element: '#fretboard',
+      strings: 6,
+      frets: 15,
+      width: 800,
+      height: 200,
+      tuning: ['E4','B3','G3','D3','A2','E2'],
+      soundFontUrl: 'https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/'
     });
-
-    // Initialize VexFlow fretboard
-    const VF = Vex.Flow;
-    const renderer = new VF.Renderer(
-      document.getElementById('fretboard-container'),
-      VF.Renderer.Backends.SVG
-    );
-    renderer.resize(800, 200);
-    const ctx = renderer.getContext();
-    const board = new VF.Fretboard(ctx, {
-      width: 760,
-      height: 180,
-      strings: ['E/4', 'B/3', 'G/3', 'D/3', 'A/2', 'E/2'],
-      frets: 15
-    });
-    board.draw();
 
     function parseTab(text) {
       const lines = text.trim().split('\n');
@@ -89,31 +51,33 @@ E|-------------|</textarea>
             let fret = ch;
             const nxt = str[pos+1];
             if (/[0-9]/.test(nxt)) { fret += nxt; pos++; }
-            notes.push({ string: 6 - s, fret: parseInt(fret,10) });
+            notes.push({ string: s + 1, fret: parseInt(fret,10) });
           }
         });
       }
       return notes;
     }
 
-    function highlightAndPlay(pos) {
-      board.clearFretStyles();
-      board.setFretStyle(pos.string - 1, pos.fret, { fillStyle: '#f39c12' });
-      board.draw();
-      if (guitarPlayer) guitarPlayer.play(board.getNoteString(pos.string - 1, pos.fret));
-    }
-
-    playBtn.onclick = () => {
-      const notes = parseTab(tabInput.value);
-      let i = 0;
+    let intervalId;
+    document.getElementById('playBtn').onclick = async () => {
+      const notes = parseTab(document.getElementById('tabInput').value);
+      // Ensure sampler is ready
+      await Tone.loaded();
+      let idx = 0;
       clearInterval(intervalId);
       intervalId = setInterval(() => {
-        if (i >= notes.length) return clearInterval(intervalId);
-        highlightAndPlay(notes[i]);
-        i++;
+        if (idx >= notes.length) return clearInterval(intervalId);
+        const { string, fret } = notes[idx];
+        guitar.highlight(string, fret, { color: '#f39c12' });
+        const note = guitar.getNote(string, fret);
+        guitar.playNote(note);
+        idx++;
       }, 500);
     };
-    stopBtn.onclick = () => clearInterval(intervalId);
+    document.getElementById('stopBtn').onclick = () => clearInterval(intervalId);
+
+    // Draw initial fretboard
+    guitar.draw();
   </script>
 </body>
 </html>
